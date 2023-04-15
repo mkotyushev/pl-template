@@ -7,7 +7,7 @@ WORKDIR /workspaces/<<[repository_name]>>
 # Apt-get installs
 RUN \
     apt update && \
-    apt-get -y install git unzip wget tmux
+    apt-get -y install git unzip wget tmux curl
 
 # Install Miniconda
 RUN \
