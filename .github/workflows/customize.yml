@@ -17,6 +17,8 @@ jobs:
           regex: false
       - name: Substitute README.md
         run: mv README_TEMPLATE.md README.md
+      - name: Remove this workflow
+        run: rm -rf .github
       - name: Commit files
         run: |
           git config --local user.email "action@github.com"
