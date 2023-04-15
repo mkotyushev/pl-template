@@ -20,3 +20,4 @@ jobs:
           branch: ${{ github.ref }}
 permissions:
   actions: write
+  contents: read
