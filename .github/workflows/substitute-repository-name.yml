@@ -1,0 +1,13 @@
+name: Substitute repository name on creation from template
+on: create
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Find and Replace
+        uses: jacobtomlinson/gha-find-replace@v3
+        with:
+          find: "<<[repository_name]>>"
+          replace: "${{ github.event.repository.name }}"
+          regex: false
