@@ -2,7 +2,6 @@
 FROM nvidia/cuda:11.7.0-devel-ubuntu22.04
 
 # Set working directory
-RUN mkdir /workspaces/<<[repository_name]>>
 WORKDIR /workspaces/<<[repository_name]>>
 
 # Apt-get installs
