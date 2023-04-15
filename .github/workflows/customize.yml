@@ -13,6 +13,11 @@ jobs:
           regex: false
       - name: Substitute README.md
         run: mv README_TEMPLATE.md README.md
+    - name: Commit files
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "Github Action"
+        git commit -a -m "Customize template"
       - name: Push changes
         uses: ad-m/github-push-action@v0.6.0
         with:
