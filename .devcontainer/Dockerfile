@@ -2,7 +2,7 @@
 FROM nvidia/cuda:11.7.0-devel-ubuntu22.04
 
 # Set working directory
-WORKDIR /workspaces/<<[repository_name]>>
+WORKDIR /workspace/<<[repository_name]>>
 
 # Apt-get installs
 RUN \
@@ -46,5 +46,5 @@ RUN /root/miniconda3/envs/<<[repository_name]>>/bin/pip install \
     -r requirements.txt 
 
 # Add repo folder to PYTHONPATH
-ENV PYTHONPATH="/workspaces/<<[repository_name]>>:${PYTHONPATH}"
-ARG PYTHONPATH="/workspaces/<<[repository_name]>>:${PYTHONPATH}"
+ENV PYTHONPATH="/workspace/<<[repository_name]>>:${PYTHONPATH}"
+ARG PYTHONPATH="/workspace/<<[repository_name]>>:${PYTHONPATH}"
