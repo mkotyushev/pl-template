@@ -7,13 +7,16 @@ services:
     build:
       context: .
       dockerfile: .devcontainer/Dockerfile
-    shm_size: '2gb'
+    shm_size: '16gb'
+    env_file:
+      - .env
     environment:
       - SSH_AUTH_SOCK:${SSH_AUTH_SOCK}
     volumes:
       - .:/workspace/<<[repository_name]>>:cached
       - data:/workspace/data:cached
       - pip_cache:/root/.cache/pip:cached
+      - ${DATA_PATH_OR_VOLUME_NAME}:/workspace/data_external:cached
       - $SSH_AUTH_SOCK:${SSH_AUTH_SOCK}
     command: /bin/sh -c "while sleep 1000; do :; done"
     deploy:
