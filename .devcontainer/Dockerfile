@@ -1,5 +1,5 @@
 # Base CUDA devel image
-FROM nvidia/cuda:11.7.0-devel-ubuntu22.04
+FROM nvidia/cuda:12.1.0-devel-ubuntu22.04
 
 # Set working directory
 WORKDIR /workspace/<<[repository_name]>>
@@ -25,24 +25,23 @@ RUN \
     conda create \
     --name <<[repository_name]>> \
     python=3.10 \
-    gcc_linux-64 gxx_linux-64 libgcc cudatoolkit=11.7 \
+    gcc_linux-64 gxx_linux-64 libgcc cudatoolkit=12.1 \
     -c conda-forge -y
-RUN /root/miniconda3/envs/<<[repository_name]>>/bin/python -m pip install --upgrade pip
+RUN /root/miniconda3/envs/<<[repository_name]>>/bin/python -m pip install --upgrade pip && \
+    /root/miniconda3/envs/<<[repository_name]>>/bin/pip install uv
 
 # Install torch & other related deps: 
 # - not in requirements.txt because order of install matters
 # - torch first due to some dependencies importing torch during install
 RUN \
-    /root/miniconda3/envs/<<[repository_name]>>/bin/pip install \
-    --default-timeout=1000 \
-    --extra-index-url https://download.pytorch.org/whl/cu117 \
-    torch==2.0.1+cu117 \
-    torchvision==0.15.2+cu117
+    /root/miniconda3/envs/<<[repository_name]>>/bin/uv pip install \
+    --extra-index-url https://download.pytorch.org/whl/cu121 \
+    torch==2.2.0+cu121 \
+    torchvision==0.17.0+cu121
 
 # Install requirements
 COPY requirements.txt .
-RUN /root/miniconda3/envs/<<[repository_name]>>/bin/pip install \
-    --default-timeout=1000 \
+RUN /root/miniconda3/envs/<<[repository_name]>>/bin/uv pip install \
     -r requirements.txt 
 
 # Add repo folder to PYTHONPATH
