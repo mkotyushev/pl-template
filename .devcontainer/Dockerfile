@@ -17,6 +17,9 @@ RUN \
     bash Miniconda3-py310_23.1.0-1-Linux-x86_64.sh -b && \
     rm Miniconda3-py310_23.1.0-1-Linux-x86_64.sh
 
+# Add conda path to PATH
+ENV PATH="/root/miniconda3/bin:${PATH}"
+
 # Create conda env
 RUN conda init bash
 RUN \
