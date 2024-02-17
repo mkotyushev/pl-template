@@ -1,5 +1,7 @@
+ENV CUDA_VERSION=12.1.0
+
 # Base CUDA devel image
-FROM nvidia/cuda:12.1.0-devel-ubuntu22.04
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 
 # Set working directory
 WORKDIR /workspace/<<[repository_name]>>
@@ -25,8 +27,9 @@ RUN \
     conda create \
     --name <<[repository_name]>> \
     python=3.10 \
-    gcc_linux-64 gxx_linux-64 libgcc cudatoolkit=12.1 \
-    -c conda-forge -y
+    gcc_linux-64 gxx_linux-64 libgcc \
+    -c conda-forge -y && \
+    conda install nvidia/label/cuda-${CUDA_VERSION}::cuda-toolkit
 RUN /root/miniconda3/envs/<<[repository_name]>>/bin/python -m pip install --upgrade pip && \
     /root/miniconda3/envs/<<[repository_name]>>/bin/pip install uv
 
@@ -36,8 +39,10 @@ RUN /root/miniconda3/envs/<<[repository_name]>>/bin/python -m pip install --upgr
 RUN \
     /root/miniconda3/envs/<<[repository_name]>>/bin/uv pip install \
     --extra-index-url https://download.pytorch.org/whl/cu121 \
-    torch==2.2.0+cu121 \
-    torchvision==0.17.0+cu121
+    torch==2.2.0+cu$(echo $TEST | sed -e "s/\.//g" -e "s/.$/
+/") \
+    torchvision==0.17.0+cu$(echo $TEST | sed -e "s/\.//g" -e "s/.$/
+/")
 
 # Install requirements
 COPY requirements.txt .
