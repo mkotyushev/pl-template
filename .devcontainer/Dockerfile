@@ -42,8 +42,8 @@ RUN python -m pip install --upgrade pip
 RUN export CUDA_VERSION_STR=cu$(echo $CUDA_VERSION | sed -e "s/\.//g" -e "s/.$//") && \
     pip install \
     --extra-index-url https://download.pytorch.org/whl/cu121 \
-    torch==2.2.0+$CUDA_VERSION_STR \
-    torchvision==0.17.0+$CUDA_VERSION_STR
+    torch==2.2.2+$CUDA_VERSION_STR \
+    torchvision==0.17.2+$CUDA_VERSION_STR
 
 # Install requirements
 COPY requirements.txt .
