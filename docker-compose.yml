@@ -10,14 +10,10 @@ services:
     shm_size: '32gb'
     env_file:
       - .env
-    environment:
-      - SSH_AUTH_SOCK:${SSH_AUTH_SOCK}
     volumes:
       - .:/workspace/<<[repository_name]>>:cached
       - pip_cache:/root/.cache/pip:cached
       - data:/workspace/data:cached
-      - ${DATA_PATH_OR_VOLUME_NAME}:/workspace/data_external:cached
-      - $SSH_AUTH_SOCK:${SSH_AUTH_SOCK}
     command: /bin/sh -c "while sleep 1000; do :; done"
     deploy:
       resources:
