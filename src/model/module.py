@@ -4,11 +4,9 @@ from lightning import LightningModule
 from typing import Any, Dict, Optional, Union
 from torch import Tensor
 from lightning.pytorch.cli import instantiate_class
-from torchmetrics import Metric
 from lightning.pytorch.utilities import grad_norm
 
 from src.utils.utils import state_norm
-from src.utils.mechanic import mechanize
 
 
 logger = logging.getLogger(__name__)
@@ -23,10 +21,8 @@ class BaseModule(LightningModule):
         finetuning: Optional[Dict[str, Any]] = None,
         log_norm_verbose: bool = False,
         lr_layer_decay: Union[float, Dict[str, float]] = 1.0,
-        n_bootstrap: int = 1000,
         skip_nan: bool = False,
         prog_bar_names: Optional[list] = None,
-        mechanize: bool = False,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -41,10 +37,6 @@ class BaseModule(LightningModule):
 
     def configure_metrics(self):
         """Configure task-specific metrics."""
-
-    def bootstrap_metric(self, probas, targets, metric: Metric):
-        """Calculate metric on bootstrap samples."""
-        return None
 
     @staticmethod
     def check_batch_dims(batch):
@@ -202,20 +194,9 @@ class BaseModule(LightningModule):
 
         # Calculate and log metrics
         for name, metric in self.metrics.items():
-            metric_value = None
-            if prefix == 'val_ds':  # bootstrap
-                if self.hparams.n_bootstrap > 0:
-                    metric_value = self.bootstrap_metric(probas[:, 1], targets, metric)
-                else:
-                    logger.warning(
-                        f'prefix == val_ds but n_bootstrap == 0. '
-                        f'No bootstrap metrics will be calculated '
-                        f'and logged.'
-                    )
-            else:
-                metric.update(probas[:, 1], targets)
-                metric_value = metric.compute()
-                metric.reset()
+            metric.update(probas[:, 1], targets)
+            metric_value = metric.compute()
+            metric.reset()
             
             prog_bar = False
             if prog_bar_names is not None:
@@ -309,22 +290,8 @@ class BaseModule(LightningModule):
         return grouped_parameters
 
     def configure_optimizer(self):
-        if not self.hparams.mechanize:
-            optimizer = instantiate_class(args=self.build_parameter_groups(), init=self.hparams.optimizer_init)
-            return optimizer
-        else:
-            # similar to instantiate_class, but with mechanize
-            args, init = self.build_parameter_groups(), self.hparams.optimizer_init
-            kwargs = init.get("init_args", {})
-            if not isinstance(args, tuple):
-                args = (args,)
-            class_module, class_name = init["class_path"].rsplit(".", 1)
-            module = __import__(class_module, fromlist=[class_name])
-            args_class = getattr(module, class_name)
-            
-            optimizer = mechanize(args_class)(*args, **kwargs)
-            
-            return optimizer
+        optimizer = instantiate_class(args=self.build_parameter_groups(), init=self.hparams.optimizer_init)
+        return optimizer
 
     def configure_lr_scheduler(self, optimizer):
         # Convert milestones from total persents to steps

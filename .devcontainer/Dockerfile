@@ -40,10 +40,7 @@ RUN python -m pip install --upgrade pip
 # - not in requirements.txt because order of install matters
 # - torch first due to some dependencies importing torch during install
 RUN export CUDA_VERSION_STR=cu$(echo $CUDA_VERSION | sed -e "s/\.//g" -e "s/.$//") && \
-    pip install \
-    --extra-index-url https://download.pytorch.org/whl/cu121 \
-    torch==2.2.2+$CUDA_VERSION_STR \
-    torchvision==0.17.2+$CUDA_VERSION_STR
+    pip install pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/$CUDA_VERSION_STR
 
 # Install requirements
 COPY requirements.txt .
