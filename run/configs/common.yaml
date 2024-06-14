@@ -16,7 +16,7 @@ trainer:
       dir: null
       id: null
       anonymous: null
-      project: birds
+      project: <<[repository_name]>>
       log_model: false
       experiment: null
       prefix: ''
