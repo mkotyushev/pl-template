@@ -1,4 +1,3 @@
-version: '1'
 services:
   dev:
     # Note that the path of the Dockerfile and context is relative to the *primary*
