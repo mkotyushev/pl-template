@@ -1,5 +1,5 @@
 name: Customize template
-on: create
+on: [create, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
