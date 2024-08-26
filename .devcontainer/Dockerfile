@@ -3,9 +3,6 @@ ARG CUDA_VERSION=11.8.0
 # Base CUDA devel image
 FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 
-# Set working directory
-WORKDIR /workspace/project
-
 # Apt-get installs
 RUN \
     apt update && \
@@ -42,11 +39,14 @@ RUN python -m pip install --upgrade pip
 RUN export CUDA_VERSION_STR=cu$(echo $CUDA_VERSION | sed -e "s/\.//g" -e "s/.$//") && \
     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/$CUDA_VERSION_STR
 
+# Set working directory
+WORKDIR /workspace/<<[repository_name]>>
+
 # Install requirements
 COPY requirements.txt .
 RUN pip install \
     -r requirements.txt 
 
 # Add repo folder to PYTHONPATH
-ENV PYTHONPATH="/workspace/project:${PYTHONPATH}"
-ARG PYTHONPATH="/workspace/project:${PYTHONPATH}"
+ENV PYTHONPATH="/workspace/<<[repository_name]>>:${PYTHONPATH}"
+ARG PYTHONPATH="/workspace/<<[repository_name]>>:${PYTHONPATH}"
