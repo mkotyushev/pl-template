@@ -23,13 +23,12 @@ class BaseModule(LightningModule):
         lr_layer_decay: Union[float, Dict[str, float]] = 1.0,
         skip_nan: bool = False,
         prog_bar_names: Optional[list] = None,
+        lr: float = None,
     ):
         super().__init__()
         self.save_hyperparameters()
 
         self.metrics = None
-        self.cat_metrics = None
-
         self.configure_metrics()
 
     def compute_loss_preds(self, batch, *args, **kwargs):
@@ -38,46 +37,19 @@ class BaseModule(LightningModule):
     def configure_metrics(self):
         """Configure task-specific metrics."""
 
-    @staticmethod
-    def check_batch_dims(batch):
-        assert all(map(lambda x: len(x) == len(batch[0]), batch)), \
-            f'All entities in batch must have the same length, got ' \
-            f'{list(map(len, batch))}'
-
-    def remove_nans(self, y, y_pred):
-        nan_mask = torch.isnan(y_pred)
-        
-        if nan_mask.ndim > 1:
-            nan_mask = nan_mask.any(dim=1)
-        
-        if nan_mask.any():
-            if not self.hparams.skip_nan:
-                raise ValueError(
-                    f'Got {nan_mask.sum()} / {nan_mask.shape[0]} nan values in update_metrics. '
-                    f'Use skip_nan=True to skip them.'
-                )
-            logger.warning(
-                f'Got {nan_mask.sum()} / {nan_mask.shape[0]} nan values in update_metrics. '
-                f'Dropping them & corresponding targets.'
-            )
-            y_pred = y_pred[~nan_mask]
-            y = y[~nan_mask]
-        return y, y_pred
+    def get_batch_size(self, batch):
+        """Get batch size."""
 
     def extract_targets_and_probas_for_metric(self, preds, batch):
-        """Extract preds and targets from batch.
-        Could be overriden for custom batch / prediction structure.
-        """
-        y, y_pred = batch[1].detach(), preds[:, 1].detach().float()
-        y, y_pred = self.remove_nans(y, y_pred)
-        y_pred = torch.softmax(y_pred, dim=1)
-        return y, y_pred
+        """Extract preds and targets from batch."""
 
-    def update_metrics(self, span, preds, batch):
+    def update_metrics(self, prefix, preds, batch):
         """Update train metrics."""
+        if self.metrics is None or prefix not in self.metrics:
+            return
         y, y_proba = self.extract_targets_and_probas_for_metric(preds, batch)
-        self.cat_metrics[span]['probas'].update(y_proba)
-        self.cat_metrics[span]['targets'].update(y)
+        for metric in self.metrics[prefix].values():
+            metric.update(y_proba, y)
 
     def on_train_epoch_start(self) -> None:
         """Called in the training loop at the very beginning of the epoch."""
@@ -86,11 +58,6 @@ class BaseModule(LightningModule):
             # TODO change to >= somehow
             if self.current_epoch == self.hparams.finetuning['unfreeze_before_epoch']:
                 self.unfreeze()
-
-    def on_train_start(self) -> None:
-        # Change dataloader num_workers to 10
-        # after cache is filled
-        self.trainer.datamodule.hparams.num_workers = self.trainer.datamodule.hparams.num_workers_saturated
 
     def unfreeze_only_selected(self):
         """
@@ -124,9 +91,9 @@ class BaseModule(LightningModule):
                 on_step=True,
                 on_epoch=True,
                 prog_bar=True,
-                batch_size=batch[0].shape[0],
+                batch_size=self.get_batch_size(batch),
             )
-        self.update_metrics('train_metrics', preds, batch)
+        self.update_metrics('train', preds, batch)
 
         # Handle nan in loss
         has_nan = False
@@ -159,9 +126,25 @@ class BaseModule(LightningModule):
                 on_epoch=True,
                 prog_bar=True,
                 add_dataloader_idx=False,
-                batch_size=batch[0].shape[0],
+                batch_size=self.get_batch_size(batch),
             )
-        self.update_metrics('val_metrics', preds, batch)
+        self.update_metrics('val', preds, batch)
+        return total_loss
+    
+    def test_step(self, batch: Tensor, batch_idx: int, dataloader_idx: Optional[int] = None, **kwargs) -> Tensor:
+        total_loss, losses, preds = self.compute_loss_preds(batch, **kwargs)
+        assert dataloader_idx is None or dataloader_idx == 0, 'Only one test dataloader is supported.'
+        for loss_name, loss in losses.items():
+            self.log(
+                f'test_loss_{loss_name}', 
+                loss,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                add_dataloader_idx=False,
+                batch_size=self.get_batch_size(batch),
+            )
+        self.update_metrics('test', preds, batch)
         return total_loss
 
     def predict_step(self, batch: Tensor, batch_idx: int, dataloader_idx: Optional[int] = None, **kwargs) -> Tensor:
@@ -176,46 +159,35 @@ class BaseModule(LightningModule):
         prog_bar_names=None,
         reset=True,
     ):
-        # Get metric span: train or val
-        span = None
-        if prefix == 'train':
-            span = 'train_metrics'
-        elif prefix in ['val', 'val_ds']:
-            span = 'val_metrics'
+        if self.metrics is None or prefix not in self.metrics:
+            return
         
-        # Get concatenated preds and targets
-        # and reset them
-        probas, targets = \
-            self.cat_metrics[span]['probas'].compute().cpu(),  \
-            self.cat_metrics[span]['targets'].compute().cpu()
-        if reset:
-            self.cat_metrics[span]['probas'].reset()
-            self.cat_metrics[span]['targets'].reset()
-
         # Calculate and log metrics
-        for name, metric in self.metrics.items():
-            metric.update(probas[:, 1], targets)
+        for name, metric in self.metrics[prefix].items():
             metric_value = metric.compute()
-            metric.reset()
+            if reset:
+                metric.reset()
             
-            prog_bar = False
-            if prog_bar_names is not None:
-                prog_bar = (name in prog_bar_names)
-
             if metric_value is not None:
-                self.log(
-                    f'{prefix}_{name}',
-                    metric_value,
-                    on_step=on_step,
-                    on_epoch=on_epoch,
-                    prog_bar=prog_bar,
-                )
+                if not isinstance(metric_value, dict):
+                    metric_value = {name: metric_value}
+                
+                for inner_name, value in metric_value.items():
+                    prog_bar = False
+                    if prog_bar_names is not None:
+                        prog_bar = (inner_name in prog_bar_names)
+                    self.log(
+                        f'{prefix}_{inner_name}',
+                        value,
+                        on_step=on_step,
+                        on_epoch=on_epoch,
+                        prog_bar=prog_bar,
+                    )
 
     def on_train_epoch_end(self) -> None:
         """Called in the training loop at the very end of the epoch."""
         if self.metrics is None:
             return
-        assert self.cat_metrics is not None
 
         self.log_metrics_and_reset(
             'train',
@@ -229,17 +201,22 @@ class BaseModule(LightningModule):
         """Called in the validation loop at the very end of the epoch."""
         if self.metrics is None:
             return
-        assert self.cat_metrics is not None
 
         self.log_metrics_and_reset(
             'val',
             on_step=False,
             on_epoch=True,
             prog_bar_names=self.hparams.prog_bar_names,
-            reset=False,
+            reset=True,
         )
+
+    def on_test_epoch_end(self) -> None:
+        """Called in the validation loop at the very end of the epoch."""
+        if self.metrics is None:
+            return
+
         self.log_metrics_and_reset(
-            'val_ds',
+            'test',
             on_step=False,
             on_epoch=True,
             prog_bar_names=self.hparams.prog_bar_names,
@@ -272,16 +249,26 @@ class BaseModule(LightningModule):
         """Get parameter groups for optimizer."""
         names, params = list(zip(*self.named_parameters()))
         num_layers = len(params)
-        grouped_parameters = [
-            {
-                'params': param, 
-                'lr': self.get_lr_decayed(
-                    self.hparams.optimizer_init['init_args']['lr'], 
-                    num_layers - layer_index - 1,
-                    name
-                )
-            } for layer_index, (name, param) in enumerate(self.named_parameters())
-        ]
+        
+        if self.hparams.lr_layer_decay == 1.0:
+            grouped_parameters = [
+                {
+                    'params': params, 
+                    'lr': self.hparams.optimizer_init['init_args']['lr']
+                }
+            ]
+        else:
+            grouped_parameters = [
+                {
+                    'params': param, 
+                    'lr': self.get_lr_decayed(
+                        self.hparams.optimizer_init['init_args']['lr'], 
+                        num_layers - layer_index - 1,
+                        name
+                    )
+                } for layer_index, (name, param) in enumerate(self.named_parameters())
+            ]
+        
         logger.info(
             f'Number of layers: {num_layers}, '
             f'min lr: {names[0]}, {grouped_parameters[0]["lr"]}, '

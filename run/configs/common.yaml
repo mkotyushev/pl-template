@@ -103,6 +103,8 @@ model:
       class_path: torch.optim.AdamW
       init_args:
         lr: 0.001
+    # NOTE: PL does not support setting LR in above optimizer_init from CLI, so we need to set it here
+    lr: null
     lr_scheduler_init:
       class_path: src.utils.lr_scheduler.PiecewiceFactorsLRScheduler
       init_args:
@@ -129,3 +131,10 @@ model:
     mechanize: false
 data:
   class_path: src.data.datamodule.BaseDataModule
+  init_args:
+    debug: false
+    batch_size: 32
+    num_workers: 10
+    pin_memory: false
+    prefetch_factor: 2
+    persistent_workers: false

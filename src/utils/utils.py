@@ -1,8 +1,11 @@
+import torch
+import torch.nn as nn
 from typing import Dict, Optional, Union
 from lightning import Trainer
 from lightning.pytorch.cli import LightningCLI
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger, TensorBoardLogger
+from weakref import proxy
 
 
 ###################################################################
@@ -17,6 +20,13 @@ class MyLightningCLI(LightningCLI):
             parser.link_arguments("data.init_args.img_size", "model.init_args.img_size")
         """
         return
+
+    def before_instantiate_classes(self) -> None:
+        # Set LR: nested dict value setting from CLI is not supported
+        # so separate arg is used
+        if 'fit' in self.config and self.config['fit']['model']['init_args']['lr'] is not None:
+            self.config['fit']['model']['init_args']['optimizer_init']['init_args']['lr'] = \
+                self.config['fit']['model']['init_args']['lr']
 
 
 
@@ -34,7 +44,7 @@ class TrainerWandb(Trainer):
                 save_img(img, self.trainer.log_dir)
         """
         if len(self.loggers) > 0:
-            if isinstance(self.loggers[0], WandbLogger):
+            if isinstance(self.loggers[0], WandbLogger) and self.loggers[0]._experiment is not None:
                 dirpath = self.loggers[0]._experiment.dir
             elif not isinstance(self.loggers[0], TensorBoardLogger):
                 dirpath = self.loggers[0].save_dir
@@ -122,3 +132,39 @@ def state_norm(module: torch.nn.Module, norm_type: Union[float, int, str], group
         total_norm = torch.tensor(list(norms.values())).norm(norm_type)
         norms[f"state_{norm_type}_norm_total"] = total_norm
     return norms
+
+
+def patch_first_conv(model, new_in_channels, default_in_channels=3, pretrained=True, conv_type=nn.Conv2d):
+    """Change first convolution layer input channels.
+    In case:
+        in_channels == 1 or in_channels == 2 -> reuse original weights
+        in_channels > 3 -> make random kaiming normal initialization
+    """
+
+    if new_in_channels == default_in_channels:
+        return
+
+    # get first conv
+    for module in model.modules():
+        if isinstance(module, conv_type) and module.in_channels == default_in_channels:
+            break
+
+    weight = module.weight.detach()
+    module.in_channels = new_in_channels
+
+    if not pretrained:
+        module.weight = nn.parameter.Parameter(
+            torch.Tensor(module.out_channels, new_in_channels // module.groups, *module.kernel_size)
+        )
+        module.reset_parameters()
+    elif new_in_channels == 1:
+        new_weight = weight.sum(1, keepdim=True)
+        module.weight = nn.parameter.Parameter(new_weight)
+    else:
+        new_weight = torch.Tensor(module.out_channels, new_in_channels // module.groups, *module.kernel_size)
+
+        for i in range(new_in_channels):
+            new_weight[:, i] = weight[:, i % default_in_channels]
+
+        new_weight = new_weight * (default_in_channels / new_in_channels)
+        module.weight = nn.parameter.Parameter(new_weight)
